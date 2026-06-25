@@ -1,20 +1,22 @@
+import { percentileStretch } from "./isroLogic";
 
-// Pure client-side, math-only TIR -> RGB colorization.
 type RGB = [number, number, number];
+
+// Physics-informed LUT mapping for Landsat-9 TIR
 const ANCHORS: { t: number; c: RGB }[] = [
-  { t: 0.00, c: [12, 28, 64] },     // deep water
-  { t: 0.12, c: [22, 55, 110] },    // shallow water
-  { t: 0.22, c: [34, 70, 45] },     // dense forest
-  { t: 0.38, c: [70, 110, 55] },    // vegetation / crops
-  { t: 0.55, c: [150, 140, 85] },   // dry grass / fallow
-  { t: 0.72, c: [185, 160, 120] },  // bare soil
-  { t: 0.86, c: [205, 195, 180] },  // sparse urban
-  { t: 1.00, c: [235, 232, 225] },  // hot urban / concrete
+  { t: 0.00, c: [10, 35, 85] },    // Deep Water (Coldest)
+  { t: 0.12, c: [22, 58, 112] },   // Shallow Water
+  { t: 0.24, c: [28, 82, 52] },    // Dense Forest
+  { t: 0.40, c: [79, 123, 58] },   // Vegetation
+  { t: 0.56, c: [145, 138, 82] },  // Soil / Dry Grass
+  { t: 0.72, c: [181, 158, 119] }, // Barren / Sand
+  { t: 0.88, c: [180, 180, 180] }, // Urban (Warm)
+  { t: 1.00, c: [238, 235, 226] }, // Hot built-up / Snow (Brightest)
 ];
-function lerp(a: number, b: number, k: number) { return a + (b - a) * k; }
+
+const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
+
 function mapColor(t: number): RGB {
-  if (t <= 0) return ANCHORS[0].c;
-  if (t >= 1) return ANCHORS[ANCHORS.length - 1].c;
   for (let i = 0; i < ANCHORS.length - 1; i++) {
     const a = ANCHORS[i], b = ANCHORS[i + 1];
     if (t >= a.t && t <= b.t) {
@@ -24,47 +26,44 @@ function mapColor(t: number): RGB {
   }
   return ANCHORS[ANCHORS.length - 1].c;
 }
-function percentileStretch(gray: Float32Array, loP = 0.02, hiP = 0.98) {
-  const hist = new Uint32Array(256);
-  for (let i = 0; i < gray.length; i++) hist[Math.max(0, Math.min(255, gray[i] | 0))]++;
-  const total = gray.length;
-  let acc = 0, lo = 0, hi = 255;
-  for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc / total >= loP) { lo = i; break; } }
-  acc = 0;
-  for (let i = 255; i >= 0; i--) { acc += hist[i]; if (acc / total >= 1 - hiP) { hi = i; break; } }
-  const out = new Float32Array(gray.length);
-  const inv = 1 / (hi - lo || 1);
-  for (let i = 0; i < gray.length; i++) out[i] = Math.max(0, Math.min(1, (gray[i] - lo) * inv));
-  return out;
-}
-export async function mathColorizeTIR(dataUrl: string, opts: any = {}) {
-  const scale = opts.scale ?? 2;
-  const img = await new Promise<HTMLImageElement>((resolve) => {
-    const im = new Image(); im.onload = () => resolve(im); im.src = dataUrl;
+
+export async function mathColorizeTIR(dataUrl: string) {
+  return new Promise<string>((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0);
+      const src = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const gray = new Float32Array(canvas.width * canvas.height);
+      for (let i = 0, p = 0; i < gray.length; i++, p += 4) {
+        gray[i] = 0.299 * src.data[p] + 0.587 * src.data[p + 1] + 0.114 * src.data[p + 2];
+      }
+      const stretched = percentileStretch(gray);
+      const outData = ctx.createImageData(canvas.width, canvas.height);
+      for (let i = 0, p = 0; i < gray.length; i++, p += 4) {
+        const [r, g, b] = mapColor(stretched[i]);
+        // ISRO Request: Blue, Green, Red order simulation
+        // But for browser display we keep RGBA
+        outData.data[p] = r;
+        outData.data[p + 1] = g;
+        outData.data[p + 2] = b;
+        outData.data[p + 3] = 255;
+      }
+      ctx.putImageData(outData, 0, 0);
+      
+      // Upscale 2x for 100m simulation
+      const finalCanvas = document.createElement("canvas");
+      finalCanvas.width = canvas.width * 2;
+      finalCanvas.height = canvas.height * 2;
+      const fctx = finalCanvas.getContext("2d")!;
+      fctx.imageSmoothingEnabled = true;
+      fctx.imageSmoothingQuality = "high";
+      fctx.drawImage(canvas, 0, 0, finalCanvas.width, finalCanvas.height);
+      resolve(finalCanvas.toDataURL("image/png"));
+    };
+    img.src = dataUrl;
   });
-  const cIn = document.createElement("canvas");
-  cIn.width = img.naturalWidth; cIn.height = img.naturalHeight;
-  const ctxIn = cIn.getContext("2d")!; ctxIn.drawImage(img, 0, 0);
-  const src = ctxIn.getImageData(0, 0, cIn.width, cIn.height);
-  const gray = new Float32Array(cIn.width * cIn.height);
-  for (let i = 0, p = 0; i < gray.length; i++, p += 4) {
-    gray[i] = 0.2126 * src.data[p] + 0.7152 * src.data[p + 1] + 0.0722 * src.data[p + 2];
-  }
-  const norm = percentileStretch(gray);
-  const W = cIn.width * scale, H = cIn.height * scale;
-  const cSmall = document.createElement("canvas");
-  cSmall.width = cIn.width; cSmall.height = cIn.height;
-  const ctxSmall = cSmall.getContext("2d")!;
-  const small = ctxSmall.createImageData(cIn.width, cIn.height);
-  for (let i = 0, p = 0; i < gray.length; i++, p += 4) {
-    const [r, g, b] = mapColor(norm[i]);
-    small.data[p] = r; small.data[p + 1] = g; small.data[p + 2] = b; small.data[p + 3] = 255;
-  }
-  ctxSmall.putImageData(small, 0, 0);
-  const cOut = document.createElement("canvas");
-  cOut.width = W; cOut.height = H;
-  const ctxOut = cOut.getContext("2d")!;
-  ctxOut.imageSmoothingEnabled = true;
-  ctxOut.drawImage(cSmall, 0, 0, W, H);
-  return cOut.toDataURL("image/png");
 }

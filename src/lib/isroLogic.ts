@@ -12,10 +12,6 @@ export function percentileStretch(data: Float32Array, low = 2, high = 98): Float
   return out;
 }
 
-/**
- * Simulates ISRO box_average_downscale logic.
- * In a real scenario, this would use OpenCV, here we use canvas context.
- */
 export async function simulateIsroDownscale(imgUrl: string, factor: number): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
@@ -25,7 +21,7 @@ export async function simulateIsroDownscale(imgUrl: string, factor: number): Pro
       canvas.width = Math.round(img.width / factor);
       canvas.height = Math.round(img.height / factor);
       const ctx = canvas.getContext("2d")!;
-      // INTER_AREA simulation: draw downscaled
+      // INTER_AREA simulation
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
