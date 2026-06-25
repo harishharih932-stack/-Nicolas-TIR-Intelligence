@@ -8,6 +8,7 @@ import { PollutionPanel } from "@/components/PollutionPanel";
 import { MapPanel } from "@/components/MapPanel";
 import { SourcePanel } from "@/components/SourcePanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { ValidationPanel } from "@/components/ValidationPanel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -126,6 +127,7 @@ export default function Dashboard() {
             <TabsTrigger value="altitude">Altitude</TabsTrigger>
             <TabsTrigger value="seismic">Seismic</TabsTrigger>
             <TabsTrigger value="volcano">Volcano</TabsTrigger>
+            <TabsTrigger value="validation">ISRO Validation</TabsTrigger>
             <TabsTrigger value="pybrowser">Python</TabsTrigger>
             <TabsTrigger value="source">Source Code</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -260,6 +262,7 @@ export default function Dashboard() {
 
           <TabsContent value="pybrowser"><BrowserPython inputUrl={inputUrl}/></TabsContent>
           <TabsContent value="source"><SourcePanel /></TabsContent>
+          <TabsContent value="validation"><ValidationPanel /></TabsContent>
           <TabsContent value="settings"><SettingsPanel /></TabsContent>
         </Tabs>
       </main>
