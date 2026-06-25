@@ -1,109 +1,188 @@
-
 import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
-import { Upload, Flame, Waves, Wind, Mountain } from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { useEffect, useMemo, useRef, useState } from "react";
+import { mathColorizeTIR } from "@/lib/mathColorize";
+import { geminiEnhance } from "@/lib/geminiBrowser";
+import { BrowserPython } from "@/components/BrowserPython";
+import { PollutionPanel } from "@/components/PollutionPanel";
+import { MapPanel } from "@/components/MapPanel";
+import { SourcePanel } from "@/components/SourcePanel";
+import { SettingsPanel } from "@/components/SettingsPanel";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { toast, Toaster } from "sonner";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line } from "recharts";
+import { Satellite, Upload, Download, Sparkles, Calculator, ShieldCheck, Mountain, Thermometer, Layers3, Activity, ArrowRight, Info, Factory, MapPin, Code2, Settings } from "lucide-react";
 
 export const Route = createFileRoute('/')({
   component: Dashboard,
 })
 
-const MOCK_DATA = [
-  { name: '10:00', temp: 28, aqi: 120 },
-  { name: '10:05', temp: 30, aqi: 125 },
-  { name: '10:10', temp: 35, aqi: 130 },
-  { name: '10:15', temp: 42, aqi: 160 },
-  { name: '10:20', temp: 40, aqi: 155 },
-]
+const genTemp = () => Array.from({ length: 24 }, (_, i) => ({
+  t: `${i}:00`,
+  tir: +(294 + 8 * Math.sin(i / 3) + Math.random() * 2).toFixed(1),
+  c: +(21 + 9 * Math.sin(i / 3) + Math.random() * 2).toFixed(1),
+}));
+const genAlt = () => Array.from({ length: 30 }, (_, i) => ({ x: i, alt: +(420 + 60 * Math.sin(i / 2) + Math.random() * 15).toFixed(0) }));
+const genSeismic = () => Array.from({ length: 20 }, (_, i) => ({ t: i, mag: +(0.4 + Math.random() * 1.8 + (i === 12 ? 2.7 : 0)).toFixed(2) }));
+
+function MetricCard({ icon, title, value, note, tone = "blue" }: any) {
+  const toneMap: any = {
+    blue: "bg-blue-50 text-blue-700 border-blue-100",
+    emerald: "bg-emerald-50 text-emerald-700 border-emerald-100",
+    orange: "bg-orange-50 text-orange-700 border-orange-100",
+    violet: "bg-violet-50 text-violet-700 border-violet-100",
+  };
+  return <Card className={`p-4 border ${toneMap[tone]}`}>
+    <div className="flex items-center justify-between gap-3">
+      <div>{icon}</div>
+      <Badge variant="outline" className="bg-white/70">BAH 2026</Badge>
+    </div>
+    <p className="mt-3 text-[11px] font-bold uppercase opacity-70">{title}</p>
+    <p className="text-2xl font-black tracking-tight">{value}</p>
+    <p className="text-xs opacity-75">{note}</p>
+  </Card>;
+}
 
 function Dashboard() {
-  const [image, setImage] = useState<string | null>(null)
+  const [inputUrl, setInputUrl] = useState<string | null>(null);
+  const [mathUrl, setMathUrl] = useState<string | null>(null);
+  const [aiUrl, setAiUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"" | "math" | "ai">("");
+  const [stage, setStage] = useState<"upload" | "math" | "gemini" | "done">("upload");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const temp = useMemo(genTemp, []);
+  const alt = useMemo(genAlt, []);
+  const seis = useMemo(genSeismic, []);
+  const maxTemp = Math.max(...temp.map((d) => d.c));
+  const minAlt = Math.min(...alt.map((d) => d.alt));
+  const maxMag = Math.max(...seis.map((d) => d.mag));
+  const displayUrl = aiUrl || mathUrl;
+
+  const resetForNewFile = (url: string) => {
+    setInputUrl(url);
+    setMathUrl(null);
+    setAiUrl(null);
+    setStage("math");
+  };
+
+  const runMath = async () => {
+    if (!inputUrl) return toast.error("Upload 200m TIR image first");
+    setBusy("math");
+    try {
+      const url = await mathColorizeTIR(inputUrl);
+      setMathUrl(url);
+      setAiUrl(null);
+      setStage("gemini");
+      toast.success("Step 2 complete: 100m super-resolved + colorized output ready");
+    } catch (e: any) { toast.error(e.message || "Math model failed"); }
+    finally { setBusy(""); }
+  };
+
+  const runAI = async () => {
+    if (!mathUrl) return toast.error("Run Math Model first");
+    setBusy("ai");
+    try {
+      const url = await geminiEnhance(mathUrl);
+      setAiUrl(url);
+      setStage("done");
+      toast.success("Gemini refinement complete");
+    } catch (e: any) { toast.error(e.message || "Gemini failed"); }
+    finally { setBusy(""); }
+  };
+
+  const download = () => {
+    const url = displayUrl;
+    if (!url) return toast.error("No output to download");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = aiUrl ? "colorized_tir_100m_gemini.png" : "colorized_tir_100m_math.png";
+    a.click();
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="header-box">
-        <h1 className="text-3xl font-bold">Earth Intelligence Dashboard</h1>
-        <p className="opacity-90">Real-time TIR Colorization & Hazard Monitoring</p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Viewer */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="card min-h-[400px] flex flex-col items-center justify-center border-dashed border-2">
-            {!image ? (
-              <label className="cursor-pointer flex flex-col items-center">
-                <Upload size={48} className="text-brand-medium mb-4" />
-                <span className="text-lg font-medium">Upload Landsat-9 TIR-1 Image</span>
-                <span className="text-sm text-slate-500">200m single-band .tif or .jpg</span>
-                <input type="file" className="hidden" onChange={(e) => setImage('mock-url')} />
-              </label>
-            ) : (
-              <div className="w-full h-full relative">
-                 <img src="https://via.placeholder.com/800x400?text=Colorized+TIR+Result" alt="Result" className="w-full h-full object-cover rounded-lg" />
-                 <button onClick={() => setImage(null)} className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full">X</button>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-             <div className="stat-card">
-                <div className="text-slate-500 text-xs uppercase font-bold">Avg Temperature</div>
-                <div className="text-2xl font-bold text-orange-600">38.5°C</div>
-             </div>
-             <div className="stat-card">
-                <div className="text-slate-500 text-xs uppercase font-bold">Pollution AQI</div>
-                <div className="text-2xl font-bold text-purple-600">158</div>
-             </div>
-          </div>
-
-          <div className="card h-[300px]">
-            <h3 className="font-bold mb-4">Thermal & AQI Trends</h3>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={MOCK_DATA}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Line type="monotone" dataKey="temp" stroke="#ea580c" />
-                <Line type="monotone" dataKey="aqi" stroke="#9333ea" />
-              </LineChart>
-            </ResponsiveContainer>
+    <div className="min-h-screen bg-white text-slate-900">
+      <Toaster theme="light" position="top-right" richColors />
+      <header className="sticky top-0 z-40 backdrop-blur border-b border-slate-200 bg-white/90 p-4 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 bg-gradient-to-br from-blue-600 to-violet-600 rounded-xl flex items-center justify-center text-white shadow-sm"><Satellite size={20}/></div>
+          <div>
+            <h1 className="text-base font-black tracking-tight">Nicolas TIR Intelligence</h1>
+            <p className="text-[11px] text-slate-500 -mt-0.5">ISRO BAH 2026 • PS10 Infrared Image Colorization & Enhancement</p>
           </div>
         </div>
+        <Badge variant="outline" className="border-emerald-300 text-emerald-700 bg-emerald-50 hidden sm:flex">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse" /> Prototype Live
+        </Badge>
+      </header>
 
-        {/* Alerts & Details */}
-        <div className="space-y-6">
-          <div className="card">
-            <h3 className="font-bold flex items-center gap-2 mb-4">
-              <Flame size={18} className="text-red-500" /> Active Alerts
-            </h3>
-            <div className="space-y-3">
-              <div className="p-3 bg-red-50 border-l-4 border-red-500 rounded">
-                <div className="font-bold text-red-700 text-sm">FIRE ALERT</div>
-                <div className="text-xs text-red-600">Hotspot detected at 12.5°N, 76.2°E (&gt;38°C)</div>
-              </div>
-              <div className="p-3 bg-purple-50 border-l-4 border-purple-500 rounded">
-                <div className="font-bold text-purple-700 text-sm">POLLUTION ALERT</div>
-                <div className="text-xs text-purple-600">AQI ≥ 150 detected in urban sector</div>
-              </div>
-              <div className="p-3 bg-blue-50 border-l-4 border-blue-500 rounded">
-                <div className="font-bold text-blue-700 text-sm">GLACIER MELT</div>
-                <div className="text-xs text-blue-600">Low altitude ice detected (&lt;380m)</div>
-              </div>
-            </div>
-          </div>
+      <main className="max-w-7xl mx-auto p-5 md:p-6 space-y-7">
+        <section className="text-center space-y-4 pt-4">
+          <Badge className="bg-blue-50 text-blue-700 border border-blue-100">Bharatiya Antariksh Hackathon 2026</Badge>
+          <h2 className="text-3xl md:text-5xl font-black tracking-tight">Thermal Infrared {'->'} Photorealistic RGB</h2>
+          <p className="text-slate-600 max-w-3xl mx-auto">
+            Single-channel Landsat-9 TIR/B10 @ 200m resolution ko 100m super-resolved TIR + realistic colorized RGB output me convert karne ka client-side prototype.
+          </p>
+        </section>
 
-          <div className="card">
-            <h3 className="font-bold mb-4">Math Metadata</h3>
-            <div className="text-xs font-mono space-y-2 text-slate-600">
-              <p>T = K₂ / ln(K₁/Lλ + 1)</p>
-              <p>Y = 0.299R + 0.587G + 0.114B</p>
-              <p>Unsharp Mask α = 0.7</p>
-              <p>Super-Res: 2x Bicubic</p>
-            </div>
-          </div>
+        <div className="grid md:grid-cols-4 gap-4">
+          <MetricCard tone="blue" icon={<Satellite size={22}/>} title="Challenge Input" value="B10 TIR" note="200m low-res thermal band" />
+          <MetricCard tone="emerald" icon={<Calculator size={22}/>} title="Math Stage" value="2× SR" note="P2-P98 stretch + LUT" />
+          <MetricCard tone="violet" icon={<Sparkles size={22}/>} title="AI Stage" value="Optional" note="Gemini refinement" />
+          <MetricCard tone="orange" icon={<Layers3 size={22}/>} title="Final Target" value="100m RGB" note="Blue-Green-Red order" />
         </div>
-      </div>
+
+        <Tabs defaultValue="colorize" className="space-y-5">
+          <TabsList className="flex-wrap h-auto bg-white border border-slate-200 p-1 shadow-sm">
+            <TabsTrigger value="colorize"><Sparkles size={14} className="mr-1"/>Colorize</TabsTrigger>
+            <TabsTrigger value="pollution"><Factory size={14} className="mr-1"/>Pollution</TabsTrigger>
+            <TabsTrigger value="map"><MapPin size={14} className="mr-1"/>Geo Map</TabsTrigger>
+            <TabsTrigger value="temperature"><Thermometer size={14} className="mr-1"/>Temperature</TabsTrigger>
+            <TabsTrigger value="altitude"><Layers3 size={14} className="mr-1"/>Altitude</TabsTrigger>
+            <TabsTrigger value="seismic"><Activity size={14} className="mr-1"/>Seismic</TabsTrigger>
+            <TabsTrigger value="volcano"><Mountain size={14} className="mr-1"/>Volcano</TabsTrigger>
+            <TabsTrigger value="pybrowser"><Code2 size={14} className="mr-1"/>Python</TabsTrigger>
+            <TabsTrigger value="source"><Settings size={14} className="mr-1"/>Source</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="colorize" className="grid lg:grid-cols-2 gap-6">
+            <Card className="p-5 md:p-6 space-y-4 shadow-sm border-slate-200 bg-white">
+              <div className="flex items-center justify-between"><h3 className="font-black">Step 1 — Input TIR @ 200m</h3><Badge variant="outline">Grayscale B10</Badge></div>
+              <div className="aspect-square bg-slate-50 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden">
+                {inputUrl ? <img src={inputUrl} className="w-full h-full object-cover" /> : <div className="text-center text-slate-400"><Upload size={48} className="mx-auto mb-2 text-orange-400"/><p className="text-xs">Upload TIR image preview</p></div>}
+              </div>
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) { const r = new FileReader(); r.onload = () => resetForNewFile(r.result as string); r.readAsDataURL(f); }
+              }} />
+              <Button onClick={() => fileRef.current?.click()} className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black h-12 uppercase shadow hover:brightness-110">{inputUrl ? "Re-upload TIR Image" : "Upload TIR Image"}</Button>
+            </Card>
+
+            <Card className="p-5 md:p-6 space-y-4 shadow-sm border-slate-200 bg-white">
+              <div className="flex items-center justify-between"><h3 className="font-black">Step 2/3 — Output @ 100m</h3><Badge variant="outline" className={aiUrl ? "border-violet-300 text-violet-700 bg-violet-50" : mathUrl ? "border-blue-300 text-blue-700 bg-blue-50" : ""}>{aiUrl ? "Gemini refined" : mathUrl ? "Math model" : "Awaiting input"}</Badge></div>
+              <div className="aspect-square bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-center overflow-hidden">
+                {busy ? <div className="text-center"><div className="h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"/><p className="text-xs font-bold text-slate-500">{busy === "math" ? "RUNNING SUPER-RESOLUTION..." : "GEMINI ENHANCING..."}</p></div> : displayUrl ? <img src={displayUrl} className="w-full h-full object-cover" /> : <p className="text-slate-400 text-sm">Result will appear here</p>}
+              </div>
+              <Button onClick={runMath} disabled={!inputUrl || !!busy} className="w-full bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-black h-12 uppercase shadow hover:brightness-110"><Calculator size={16} className="mr-2"/>Step 2 - Math Model</Button>
+              <Button onClick={runAI} disabled={!mathUrl || !!busy} className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white font-black h-12 uppercase shadow hover:brightness-110"><Sparkles size={16} className="mr-2"/>Step 3 - Gemini AI Enhance</Button>
+              <Button onClick={download} disabled={!displayUrl} variant="outline" className="w-full h-11"><Download size={16} className="mr-2"/>Download PNG</Button>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="pollution"><PollutionPanel imageUrl={displayUrl}/></TabsContent>
+          <TabsContent value="map"><MapPanel /></TabsContent>
+          <TabsContent value="temperature"><Card className="p-6 bg-white"><div className="flex justify-between items-center mb-4"><h3 className="font-black flex gap-2"><Thermometer className="text-red-500"/>Surface Temp Proxy</h3><Badge className={maxTemp > 38 ? "bg-red-100 text-red-700" : "bg-emerald-100"}>Peak {maxTemp}°C</Badge></div><ResponsiveContainer width="100%" height={320}><AreaChart data={temp}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="t" fontSize={11}/><YAxis unit="°C" fontSize={11}/><Tooltip/><Area type="monotone" dataKey="tir" stroke="#f97316" fill="#fed7aa"/><Area type="monotone" dataKey="c" stroke="#0284c7" fill="#bae6fd"/></AreaChart></ResponsiveContainer></Card></TabsContent>
+          <TabsContent value="altitude"><Card className="p-6 bg-white"><div className="flex justify-between items-center mb-4"><h3 className="font-black flex gap-2"><Layers3 className="text-cyan-600"/>Elevation Profile</h3><Badge>Min {minAlt} m</Badge></div><ResponsiveContainer width="100%" height={320}><LineChart data={alt}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="x" fontSize={11}/><YAxis unit="m" fontSize={11}/><Tooltip/><Line type="monotone" dataKey="alt" stroke="#0891b2" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></Card></TabsContent>
+          <TabsContent value="seismic"><Card className="p-6 bg-white"><div className="flex justify-between items-center mb-4"><h3 className="font-black flex gap-2"><Activity className="text-amber-500"/>Seismic Proxy</h3><Badge className={maxMag > 2.5 ? "bg-amber-100 text-amber-700" : "bg-emerald-100"}>Peak M{maxMag}</Badge></div><ResponsiveContainer width="100%" height={320}><AreaChart data={seis}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="t" fontSize={11}/><YAxis fontSize={11}/><Tooltip/><Area type="monotone" dataKey="mag" stroke="#f59e0b" fill="#fef3c7"/></AreaChart></ResponsiveContainer></Card></TabsContent>
+          <TabsContent value="volcano"><Card className="p-6 bg-white space-y-4"><h3 className="font-black flex gap-2"><Mountain className="text-orange-600"/>Volcano Interpretation</h3><div className="grid md:grid-cols-3 gap-4"><div className="p-4 rounded border bg-slate-50"><p className="text-[10px] font-bold uppercase text-slate-500">Threshold</p><p className="text-xl font-black">40°C+</p></div><div className="p-4 rounded border bg-slate-50"><p className="text-[10px] font-bold uppercase text-slate-500">Band</p><p className="text-xl font-black">B10 TIR</p></div><div className="p-4 rounded border bg-emerald-50 text-emerald-700"><p className="text-[10px] font-bold uppercase opacity-70">Status</p><p className="text-xl font-black">{maxTemp > 38 ? "Watch" : "Nominal"}</p></div></div></Card></TabsContent>
+          <TabsContent value="pybrowser"><BrowserPython inputUrl={inputUrl}/></TabsContent>
+          <TabsContent value="source"><SourcePanel /></TabsContent>
+        </Tabs>
+      </main>
+      <footer className="pt-10 pb-6 text-center text-[11px] text-slate-400 border-t border-slate-100"><p>Built by <span className="text-slate-600 font-bold">Team Nicolas</span> • ISRO BAH 2026 PS10</p></footer>
     </div>
-  )
+  );
 }
+  
