@@ -1,0 +1,1 @@
+import * as React from "react"; export const Label = (props: any) => <label className="text-sm font-medium leading-none" {...props} />

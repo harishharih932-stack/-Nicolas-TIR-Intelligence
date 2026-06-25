@@ -1,0 +1,1 @@
+import * as React from "react"; export const Input = (props: any) => <input className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm" {...props} />

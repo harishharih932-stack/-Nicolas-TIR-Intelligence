@@ -1,0 +1,14 @@
+
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+@theme {
+  --color-brand-dark: #1a4731;
+  --color-brand-medium: #2d7a4f;
+}
+@keyframes nicolas-blink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.02); box-shadow: 0 0 20px rgba(249, 115, 22, 0.4); }
+}
+.nicolas-blink { animation: nicolas-blink 2s infinite ease-in-out; }
+.nicolas-blink-blue { animation: nicolas-blink 2s infinite ease-in-out; border: 2px solid #2563eb; }
+.nicolas-blink-violet { animation: nicolas-blink 2s infinite ease-in-out; border: 2px solid #8b5cf6; }
